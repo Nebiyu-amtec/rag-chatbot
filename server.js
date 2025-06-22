@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 // 🔐 Replace this with your real OpenAI key (keep it secret in production!)
-const OPENAI_API_KEY = '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'; // Your OpenAI API key
+const OPENAI_API_KEY = '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'; // Your OpenAI API key
 
 app.post('/', async (req, res) => {
   // Extract the Dialogflow fulfillment tag
