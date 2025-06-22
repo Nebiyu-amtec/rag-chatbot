@@ -1,97 +1,73 @@
+require('dotenv').config();
 const express = require('express');
-const axios = require('axios');
+const { OpenAI } = require('openai');
 const app = express();
 
 app.use(express.json());
 
-// 🔐 Replace this with your real OpenAI key (keep it secret in production!)
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// Initialize OpenAI with environment variable
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || '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' // Fallback for testing ONLY
+});
+
+// Validate API key on startup
+if (!process.env.OPENAI_API_KEY) {
+  console.warn('⚠️ Warning: OPENAI_API_KEY not set in .env');
+}
 
 app.post('/', async (req, res) => {
-  // Extract the Dialogflow fulfillment tag
-  const tag = req.body.fulfillmentInfo?.tag;
+  console.log('Received request:', JSON.stringify(req.body, null, 2)); // Debug logging
 
-  // Only respond if this is the correct fallback tag
-  if (tag === 'chatgpt-fallback') {
-    // Try to extract the user query from the session or raw payload
-    const userQuery =
-      req.body.sessionInfo?.parameters?.text || 
-      req.body.text || 
-      req.body.queryResult?.text || 
-      "What would you like to know?";
-
-    try {
-      // Send the query to the OpenAI ChatGPT API
-      const openaiRes = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a friendly and professional IT assistant at Amtec Links. Answer clearly and concisely.',
-            },
-            {
-              role: 'user',
-              content: userQuery,
-            },
-          ],
+  try {
+    // Extract user query from Dialogflow CX payload
+    const userQuery = req.body.text || 
+                     req.body.queryResult?.queryText || 
+                     "How can I help you?";
+    
+    // Get ChatGPT response
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { 
+          role: "system", 
+          content: "You're an IT consultant for Amtec Links. Answer professionally in 1-2 sentences." 
         },
-        {
-          headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+        { role: "user", content: userQuery }
+      ],
+      max_tokens: 100
+    });
 
-      // Extract GPT's response
-      const reply = openaiRes.data.choices[0].message.content;
+    const reply = completion.choices[0].message.content;
 
-      // Send response back to Dialogflow CX
-      res.json({
-        fulfillment_response: {
-          messages: [
-            {
-              text: {
-                text: [reply],
-              },
-            },
-          ],
-        },
-      });
-    } catch (err) {
-      // Log detailed error for debugging
-      console.error('OpenAI Error:', err.response?.data || err.message);
-
-      // Send fallback error message to user
-      res.json({
-        fulfillment_response: {
-          messages: [
-            {
-              text: {
-                text: ['Sorry, I couldn’t get an answer right now. Please try again.'],
-              },
-            },
-          ],
-        },
-      });
-    }
-  } else {
-    // If tag is missing or doesn't match, return a default reply
+    // Dialogflow CX response format
     res.json({
-      fulfillment_response: {
-        messages: [
-          {
-            text: {
-              text: ['Invalid or missing fulfillment tag.'],
-            },
-          },
-        ],
-      },
+      fulfillmentResponse: {
+        messages: [{
+          text: {
+            text: [reply]
+          }
+        }]
+      }
+    });
+
+  } catch (error) {
+    console.error('API Error:', error);
+    res.status(500).json({
+      fulfillmentResponse: {
+        messages: [{
+          text: {
+            text: ["Sorry, I'm having trouble answering. Please try again later."]
+          }
+        }]
+      }
     });
   }
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`✅ ChatGPT webhook running at http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  if (!process.env.OPENAI_API_KEY) {
+    console.log('⚠️ Running in TEST MODE (no real OpenAI key)');
+  }
+});
