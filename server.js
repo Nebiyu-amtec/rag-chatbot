@@ -15,7 +15,7 @@ app.post('/', async (req, res) => {
             {
                 model: 'gpt-4',
                 messages: [
-                    { role: "system", content: "You are a helpful IT support assistant working at Amtec Links." },
+                    { role: "system", content: "You are AmtecBot, a friendly and professional support assistant for Amtec Links, skilled in IT, DevOps, and cloud consulting." },
                     { role: "user", content: userQuery }
                 ]
             },
