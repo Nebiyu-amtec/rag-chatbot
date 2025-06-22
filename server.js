@@ -4,56 +4,94 @@ const app = express();
 
 app.use(express.json());
 
-const OPENAI_API_KEY = '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'; // ⛔ Replace with your actual API key
+// 🔐 Replace this with your real OpenAI key (keep it secret in production!)
+const OPENAI_API_KEY = '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'; // Your OpenAI API key
 
 app.post('/', async (req, res) => {
+  // Extract the Dialogflow fulfillment tag
   const tag = req.body.fulfillmentInfo?.tag;
-  
+
+  // Only respond if this is the correct fallback tag
   if (tag === 'chatgpt-fallback') {
-    const userQuery = req.body.text || req.body.queryResult?.text || "What do you want to know?";
+    // Try to extract the user query from the session or raw payload
+    const userQuery =
+      req.body.sessionInfo?.parameters?.text || 
+      req.body.text || 
+      req.body.queryResult?.text || 
+      "What would you like to know?";
 
     try {
+      // Send the query to the OpenAI ChatGPT API
       const openaiRes = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
           model: 'gpt-4',
           messages: [
-            { role: "system", content: "You are a helpful IT assistant working for Amtec Links." },
-            { role: "user", content: userQuery }
-          ]
+            {
+              role: 'system',
+              content: 'You are a friendly and professional IT assistant at Amtec Links. Answer clearly and concisely.',
+            },
+            {
+              role: 'user',
+              content: userQuery,
+            },
+          ],
         },
         {
           headers: {
             Authorization: `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'application/json',
+          },
         }
       );
 
+      // Extract GPT's response
       const reply = openaiRes.data.choices[0].message.content;
 
+      // Send response back to Dialogflow CX
       res.json({
         fulfillment_response: {
-          messages: [{ text: { text: [reply] } }]
-        }
+          messages: [
+            {
+              text: {
+                text: [reply],
+              },
+            },
+          ],
+        },
       });
     } catch (err) {
-      console.error('OpenAI Error:', err.message);
+      // Log detailed error for debugging
+      console.error('OpenAI Error:', err.response?.data || err.message);
+
+      // Send fallback error message to user
       res.json({
         fulfillment_response: {
-          messages: [{ text: { text: ["Sorry, something went wrong."] } }]
-        }
+          messages: [
+            {
+              text: {
+                text: ['Sorry, I couldn’t get an answer right now. Please try again.'],
+              },
+            },
+          ],
+        },
       });
     }
   } else {
+    // If tag is missing or doesn't match, return a default reply
     res.json({
       fulfillment_response: {
-        messages: [{ text: { text: ["Invalid or missing fulfillment tag."] } }]
-      }
+        messages: [
+          {
+            text: {
+              text: ['Invalid or missing fulfillment tag.'],
+            },
+          },
+        ],
+      },
     });
   }
 });
 
-
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`ChatGPT webhook running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ ChatGPT webhook running at http://localhost:${PORT}`));
