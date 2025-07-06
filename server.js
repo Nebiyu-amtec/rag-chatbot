@@ -1,134 +1,140 @@
-require('dotenv').config();
 const express = require('express');
+const axios = require('axios');
 const app = express();
 
 app.use(express.json());
 
-// =====================
-// HARDCODED KNOWLEDGE BASE (ONLY FROM YOUR DOCUMENT)
-// =====================
-const AMTEC_KNOWLEDGE = {
-  about: "Amtec Links is an IT Solutions company, we provide a comprehensive range of IT products and services under one roof. Established in 2007, we have grown into a leading organization that provides reliable technology solutions to companies around the world. Our experienced team works closely with clients to understand their needs and provide tailored solutions.",
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Secure your API key
 
-  mission: "To develop products that will have a positive impact on the world. We are constantly inventing new technologies with this goal in mind, and hope they help make our planet more sustainable overall.",
+app.post('/', async (req, res) => {
+  const tag = req.body.fulfillmentInfo?.tag;
 
-  vision: "To develop products and services that change the way we use technology and to become one of the foremost innovators of technology products and services.",
+  if (tag === 'chatgpt-fallback') {
+    const userQuery =
+      req.body.sessionInfo?.parameters?.text ||
+      req.body.text ||
+      req.body.queryResult?.text ||
+      "What do you want to know?";
 
-  hardware: "We are authorized resellers of some of the best IT Hardware manufacturers like Dell, Lenovo, Microsoft, Seagate, Zebra, and Prime Computer (Switzerland). We procure, install, and maintain IT Hardware for corporations of any size.",
+    try {
+      const openaiRes = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4',
+          temperature: 0, // 🔒 no creativity
+          messages: [
+            {
+              role: "system",
+              content: `
+You are Amtec Links' official support chatbot. 
 
-  software: "We provide both ready-made and custom-made software solutions to corporations. In addition to that, we also provide value-added services such as IT support, integrations, implementations, and training.",
+✅ ONLY answer questions directly related to Amtec Links, its services, team, industries, and support options.  
+🚫 If the user asks anything unrelated to Amtec Links, DO NOT answer. Instead, always reply:  
+"I’m Amtec Links’ support bot, and I can only assist with questions about our company, services, or support. Would you like to ask something related to Amtec Links?"
 
-  cloud: "Cloud Solutions is one of our core services. We integrate every other aspect with our cloud solutions to achieve digital transformation. We partner with Google Cloud, AWS, and Microsoft Azure as our infrastructure providers to provide reliable and efficient cloud solutions.",
+📌 **Amtec Links Company Information**:  
 
-  services: [
-    "Web Development", "Mobile App Development", "Corporate Branding", 
-    "Digital Transformation", "IT Infrastructure Design", "Software Design",
-    "Smart City Design", "Cyber Security", "Staff Training", "Sustainability Auditing"
-  ].join(", "),
+- **About Us**: Amtec Links is an IT solutions company, providing a comprehensive range of IT products and services under one roof. Established in 2007, we offer reliable technology solutions to companies worldwide.  
 
-  contact: `
-    Email: info@amteclinks.com
-    Telephone: +971 7 207 8158
-    WhatsApp: +971 7 207 8158
-    Address: Office 310 BC2 RAKEZ HQ Island Street, Al Nakheel, PO Box 40383, Ras Al Khaimah, UAE
-    Website: www.amteclinks.com
-  `,
+- **Mission**: To develop products that positively impact the world and make our planet more sustainable.  
 
-  hours: `
-    Monday-Thursday: 9 AM - 5 PM
-    Friday: 9 AM - 12:30 PM
-    Saturday-Sunday: Closed
-  `,
+- **Vision**: To innovate and change the way we use technology, becoming one of the foremost innovators in IT solutions.  
 
-  leadership: {
-    ceo: "Muhammad Ismail (CEO): Leading the company with a vision for innovation and strategic growth. Holds a BSc (Honours) in Computing and Information Technologies from the University of Derby.",
-    legal: "Intissar Abdallah (Chief Legal Officer): Oversees the company's legal functions, ensuring regulatory adherence and strategic risk management. Holds an LLB from Bayero University and a Postgraduate Certificate in Law from the University of London."
-  }
-};
+- **Services**:  
+  - IT Hardware (Dell, Lenovo, Microsoft, Seagate, Zebra)  
+  - Software (custom & ready-made solutions, IT support, integrations, training)  
+  - Cloud Solutions (Google Cloud, AWS, Microsoft Azure)  
+  - Consultancy (IT operations, security, digital transformation)  
+  - Web & Mobile App Development  
+  - Corporate Branding  
+  - Cybersecurity  
+  - Staff Training  
+  - Sustainability Auditing  
 
-// =====================
-// STRICT QUERY HANDLING
-// =====================
-const isAboutAmtec = (query) => {
-  const amtecKeywords = [
-    "amtec links", "it solutions", "hardware", "software", "cloud", 
-    "consultancy", "web development", "mobile app", "corporate branding",
-    "digital transformation", "it infrastructure", "smart city", 
-    "cyber security", "staff training", "sustainability auditing", 
-    "mission", "vision", "contact", "working hours", "muhammad ismail", 
-    "intissar abdallah", "uae", "ras al khaimah", "ceo", "legal officer",
-    "services", "support", "products", "company"
-  ];
-  return amtecKeywords.some(keyword => query.includes(keyword.toLowerCase()));
-};
+- **Industries Served**: Healthcare, Finance, Retail, Education, Government.  
 
-// =====================
-// WEBHOOK ENDPOINT
-// =====================
-app.post('/', (req, res) => {
-  const userQuery = (req.body.text || req.body.queryResult?.queryText || "").toLowerCase();
-  let reply;
+- **Leadership**:  
+  - **Muhammad Ismail, CEO**: Visionary leader with expertise in IT and innovation.  
+  - **Intissar Abdallah, Chief Legal Officer**: Expert in corporate law and compliance.  
 
-  // REJECT UNRELATED QUERIES
-  if (!isAboutAmtec(userQuery)) {
-    reply = "I’m Amtec Links’ support bot and can only assist with questions about our company, products, or services. For example, you could ask about our IT solutions, cloud services, or contact details.";
-  } 
-  // ANSWER STRICTLY FROM KNOWLEDGE BASE
-  else {
-    if (userQuery.includes("about") || userQuery.includes("what is amtec")) {
-      reply = AMTEC_KNOWLEDGE.about;
-    } 
-    else if (userQuery.includes("mission")) {
-      reply = AMTEC_KNOWLEDGE.mission;
-    } 
-    else if (userQuery.includes("vision")) {
-      reply = AMTEC_KNOWLEDGE.vision;
-    } 
-    else if (userQuery.includes("hardware")) {
-      reply = AMTEC_KNOWLEDGE.hardware;
-    } 
-    else if (userQuery.includes("software")) {
-      reply = AMTEC_KNOWLEDGE.software;
-    } 
-    else if (userQuery.includes("cloud")) {
-      reply = AMTEC_KNOWLEDGE.cloud;
-    } 
-    else if (userQuery.includes("services") || userQuery.includes("consultancy")) {
-      reply = `Our services include: ${AMTEC_KNOWLEDGE.services}`;
-    } 
-    else if (userQuery.includes("contact") || userQuery.includes("how to reach") || userQuery.includes("support")) {
-      reply = `You can reach us at:\n${AMTEC_KNOWLEDGE.contact}`;
-    } 
-    else if (userQuery.includes("hours") || userQuery.includes("open") || userQuery.includes("time")) {
-      reply = `Our working hours are:\n${AMTEC_KNOWLEDGE.hours}`;
-    } 
-    else if (userQuery.includes("muhammad") || userQuery.includes("ceo")) {
-      reply = AMTEC_KNOWLEDGE.leadership.ceo;
-    } 
-    else if (userQuery.includes("intissar") || userQuery.includes("legal")) {
-      reply = AMTEC_KNOWLEDGE.leadership.legal;
-    } 
-    else if (userQuery.includes("are you a bot") || userQuery.includes("ai")) {
-      reply = "Yes, I’m Amtec Links’ support bot. How can I help you today?";
-    } 
-    else {
-      reply = "I don’t have the answer to that specific question. Please email info@amteclinks.com for assistance.";
+- **Working Hours**:  
+  - Monday–Thursday: 9 AM – 5 PM  
+  - Friday: 9 AM – 12:30 PM  
+  - Saturday & Sunday: Closed  
+
+- **Contact Info**:  
+  - 📞 +971 7 207 8158  
+  - 📧 info@amteclinks.com  
+  - 🌐 www.amteclinks.com  
+
+✅ ONLY use this information to answer questions.  
+🚫 DO NOT generate content beyond what’s provided.  
+🚫 DO NOT answer general knowledge questions.  
+              `
+            },
+            {
+              role: "user",
+              content: userQuery
+            }
+          ]
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      let reply = openaiRes.data.choices[0].message.content;
+
+      // Final safety check to enforce strict rule
+      if (
+        !reply.toLowerCase().includes("amtec links") &&
+        !reply.toLowerCase().includes("i’m amtec links’ support bot")
+      ) {
+        reply = "I’m Amtec Links’ support bot, and I can only assist with questions about our company, services, or support. Would you like to ask something related to Amtec Links?";
+      }
+
+      res.json({
+        fulfillment_response: {
+          messages: [
+            {
+              text: {
+                text: [reply]
+              }
+            }
+          ]
+        }
+      });
+    } catch (err) {
+      console.error('OpenAI Error:', err.response?.data || err.message);
+      res.json({
+        fulfillment_response: {
+          messages: [
+            {
+              text: {
+                text: ["Sorry, I couldn’t get an answer right now. Please try again later."]
+              }
+            }
+          ]
+        }
+      });
+    }
+  } else {
+    res.json({
+      fulfillment_response: {
+        messages: [
+          {
+            text: {
+              text: ["Invalid or missing fulfillment tag."]
+            }
+          ]
+        ]
+      });
     }
   }
-
-  // Dialogflow CX Response Format
-  res.json({
-    fulfillmentResponse: {
-      messages: [{ text: { text: [reply] } }]
-    }
-  });
 });
 
-// =====================
-// SERVER START
-// =====================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`🚀 Amtec Links bot running on port ${PORT}`);
-  console.log("✅ Strict mode: ONLY answers about Amtec Links");
-});
+app.listen(PORT, () => console.log(`✅ Amtec Links ChatGPT webhook running at http://localhost:${PORT}`));
