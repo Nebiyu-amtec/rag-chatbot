@@ -12,113 +12,134 @@ const openai = new OpenAI({
 // =================================================================
 // COMPLETE AMTEC LINKS KNOWLEDGE BASE (FROM YOUR DOCUMENT)
 // =================================================================
-const SYSTEM_PROMPT = `
-You are Amtec Links' official support bot. Follow these rules STRICTLY:
-
-=== RULES ===
-1. ONLY answer about:
-   - Amtec Links' services/products
+const STRICT_RULES = `
+<<< STRICT INSTRUCTIONS >>>
+1. YOU ARE AMTEC LINKS' OFFICIAL BOT. ONLY ANSWER QUESTIONS ABOUT:
+   - IT solutions (hardware/software/cloud)
    - Company info (mission, vision, leadership)
    - Contact/support details
 
-2. For ANY other topic, respond:
-   "I specialize in Amtec Links inquiries. Please ask about our IT solutions, company info, or support options."
+2. FOR ALL OTHER TOPICS, RESPOND:
+   "I specialize in Amtec Links inquiries. Ask about our IT solutions, company info, or support options."
 
-3. NEVER:
-   - Give health/wellness advice
-   - Discuss unrelated topics
-   - Invent information
+3. NEVER DISCUSS:
+   - Health/wellness (snacks, ergonomics)
+   - Unrelated topics (weather, sports, etc.)
+   - Other companies
+<<< END RULES >>>
+`;
 
-=== COMPANY DATA ===
-[ABOUT US]
-Amtec Links is an IT Solutions company established in 2007. We provide comprehensive IT products/services under one roof, serving global clients with tailored solutions.
+const AMTEC_KNOWLEDGE = `
+<<< COMPANY DATA >>>
 
-[MISSION]
+=== ABOUT AMTEC LINKS ===
+IT Solutions company established in 2007. We provide comprehensive IT products/services under one roof, serving global clients with tailored solutions.
+
+=== MISSION ===
 Develop products with positive global impact through sustainable technology innovation.
 
-[VISION]
+=== VISION ===
 Become a foremost innovator in technology products/services that change how we use tech.
 
-[SERVICES/PRODUCTS]
-1. IT HARDWARE:
-   - Authorized reseller for: Dell, Lenovo, Microsoft, Seagate, Zebra, Prime Computer (Switzerland)
-   - Services: Procurement, installation, maintenance
+=== IT HARDWARE ===
+- Authorized reseller for: Dell, Lenovo, Microsoft, Seagate, Zebra, Prime Computer (Switzerland)
+- Services: Procurement, installation, maintenance
 
-2. SOFTWARE:
-   - Ready-made & custom solutions
-   - Value-added services: IT support, integrations, implementations, training
+=== SOFTWARE ===
+- Ready-made & custom solutions
+- Value-added services: IT support, integrations, implementations, training
 
-3. CLOUD SOLUTIONS:
-   - Partners: Google Cloud, AWS, Microsoft Azure
-   - Full digital transformation integration
+=== CLOUD SOLUTIONS ===
+- Partners: Google Cloud, AWS, Microsoft Azure
+- Full digital transformation integration
 
-4. CONSULTANCY SERVICES:
-   - Web/Mobile App Development
-   - Corporate Branding
-   - Digital Transformation
-   - IT Infrastructure Design
-   - Software/Smart City Design
-   - Cyber Security
-   - Staff Training
-   - Sustainability Auditing
+=== CONSULTANCY SERVICES ===
+- Web Development
+- Mobile App Development
+- Corporate Branding
+- Digital Transformation
+- IT Infrastructure Design
+- Software Design
+- Smart City Design
+- Cyber Security
+- Staff Training
+- Sustainability Auditing
 
-[LEADERSHIP]
+=== LEADERSHIP ===
 - CEO: Muhammad Ismail
   • Leads with innovation vision
   • BSc (Hons) Computing & IT, University of Derby
-
 - Chief Legal Officer: Intissar Abdallah
   • Oversees legal/compliance
   • LLB (Bayero University), PG Cert Law (University of London)
 
-[CONTACT]
+=== CONTACT DETAILS ===
 - Email: info@amteclinks.com
 - Phone: +971 7 207 8158
 - WhatsApp: +971 7 207 8158
 - Address: Office 310 BC2 RAKEZ HQ, Al Nakheel, Ras Al Khaimah, UAE
 - Website: www.amteclinks.com
 
-[WORKING HOURS]
+=== WORKING HOURS ===
 Mon-Thu: 9AM-5PM | Fri: 9AM-12:30PM | Sat-Sun: Closed
+<<< END KNOWLEDGE >>>
 `;
 
 // =================================================================
-// WEBHOOK ENDPOINT WITH DOUBLE VALIDATION
+// WEBHOOK ENDPOINT WITH ACTIVE RULE REINFORCEMENT
 // =================================================================
 app.post('/', async (req, res) => {
   const userQuery = req.body.queryText || req.body.text || "";
 
   try {
-    // Step 1: Get OpenAI response
-    const completion = await openai.chat.completions.create({
+    // Step 1: Initial attempt with full context
+    let messages = [
+      { 
+        role: "system", 
+        content: `${STRICT_RULES}\n\n${AMTEC_KNOWLEDGE}\n\nREMEMBER: ${STRICT_RULES}` 
+      },
+      { role: "user", content: userQuery }
+    ];
+
+    let completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userQuery }
-      ],
+      messages,
       temperature: 0.0, // Zero creativity
       max_tokens: 150
     });
 
-    const aiReply = completion.choices[0].message.content;
+    let aiReply = completion.choices[0].message.content;
 
-    // Step 2: Manual validation
-    const amtecKeywords = [
-      "amtec", "hardware", "software", "cloud", "consultancy", 
-      "muhammad", "intissar", "uae", "contact", "mission"
-    ];
-    
-    const isOnTopic = amtecKeywords.some(kw => 
-      aiReply.toLowerCase().includes(kw)
-    ) || userQuery.toLowerCase().includes("amtec");
+    // Step 2: Detect and correct off-topic responses
+    const isOffTopic = ![
+      "amtec", "hardware", "software", "cloud", "contact", 
+      "mission", "vision", "muhammad", "intissar", "uae"
+    ].some(keyword => aiReply.toLowerCase().includes(keyword));
 
-    const finalReply = isOnTopic 
-      ? aiReply 
-      : "I specialize in Amtec Links inquiries. Please ask about our IT solutions or company info.";
+    if (isOffTopic) {
+      // Reinforce rules and retry
+      messages.push(
+        { role: "assistant", content: aiReply },
+        { 
+          role: "user", 
+          content: "CORRECTION: Your previous response was off-topic. " + 
+                  "Remember: ONLY discuss Amtec Links' products, services, or company info."
+        }
+      );
 
+      completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages,
+        temperature: 0.0,
+        max_tokens: 150
+      });
+      aiReply = completion.choices[0].message.content;
+    }
+
+    // Final response
     res.json({
       fulfillmentResponse: {
-        messages: [{ text: { text: [finalReply] } }]
+        messages: [{ text: { text: [aiReply] } }]
       }
     });
 
@@ -126,7 +147,7 @@ app.post('/', async (req, res) => {
     console.error("Error:", error);
     res.status(500).json({ 
       fulfillmentResponse: {
-        messages: [{ text: { text: ["Please contact info@amteclinks.com for assistance."] } }]
+        messages: [{ text: { text: ["Please contact info@amteclinks.com"] } }]
       }
     });
   }
@@ -137,6 +158,6 @@ app.post('/', async (req, res) => {
 // =================================================================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`🚀 Amtec Links bot running on port ${PORT}`);
-  console.log("🔒 Strict mode: Only answers about Amtec Links");
+  console.log(`🚀 Amtec Links bot running with COMPLETE knowledge`);
+  console.log("🔒 100% strict mode - No off-topic responses");
 });
