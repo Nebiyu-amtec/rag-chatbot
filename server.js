@@ -1,163 +1,98 @@
-require('dotenv').config();
 const express = require('express');
-const { OpenAI } = require('openai');
+const axios = require('axios');
 const app = express();
 
 app.use(express.json());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // Secure your API key
 
-// =================================================================
-// COMPLETE AMTEC LINKS KNOWLEDGE BASE (FROM YOUR DOCUMENT)
-// =================================================================
-const STRICT_RULES = `
-<<< STRICT INSTRUCTIONS >>>
-1. YOU ARE AMTEC LINKS' OFFICIAL BOT. ONLY ANSWER QUESTIONS ABOUT:
-   - IT solutions (hardware/software/cloud)
-   - Company info (mission, vision, leadership)
-   - Contact/support details
-
-2. FOR ALL OTHER TOPICS, RESPOND:
-   "I specialize in Amtec Links inquiries. Ask about our IT solutions, company info, or support options."
-
-3. NEVER DISCUSS:
-   - Health/wellness (snacks, ergonomics)
-   - Unrelated topics (weather, sports, etc.)
-   - Other companies
-<<< END RULES >>>
-`;
-
-const AMTEC_KNOWLEDGE = `
-<<< COMPANY DATA >>>
-
-=== ABOUT AMTEC LINKS ===
-IT Solutions company established in 2007. We provide comprehensive IT products/services under one roof, serving global clients with tailored solutions.
-
-=== MISSION ===
-Develop products with positive global impact through sustainable technology innovation.
-
-=== VISION ===
-Become a foremost innovator in technology products/services that change how we use tech.
-
-=== IT HARDWARE ===
-- Authorized reseller for: Dell, Lenovo, Microsoft, Seagate, Zebra, Prime Computer (Switzerland)
-- Services: Procurement, installation, maintenance
-
-=== SOFTWARE ===
-- Ready-made & custom solutions
-- Value-added services: IT support, integrations, implementations, training
-
-=== CLOUD SOLUTIONS ===
-- Partners: Google Cloud, AWS, Microsoft Azure
-- Full digital transformation integration
-
-=== CONSULTANCY SERVICES ===
-- Web Development
-- Mobile App Development
-- Corporate Branding
-- Digital Transformation
-- IT Infrastructure Design
-- Software Design
-- Smart City Design
-- Cyber Security
-- Staff Training
-- Sustainability Auditing
-
-=== LEADERSHIP ===
-- CEO: Muhammad Ismail
-  • Leads with innovation vision
-  • BSc (Hons) Computing & IT, University of Derby
-- Chief Legal Officer: Intissar Abdallah
-  • Oversees legal/compliance
-  • LLB (Bayero University), PG Cert Law (University of London)
-
-=== CONTACT DETAILS ===
-- Email: info@amteclinks.com
-- Phone: +971 7 207 8158
-- WhatsApp: +971 7 207 8158
-- Address: Office 310 BC2 RAKEZ HQ, Al Nakheel, Ras Al Khaimah, UAE
-- Website: www.amteclinks.com
-
-=== WORKING HOURS ===
-Mon-Thu: 9AM-5PM | Fri: 9AM-12:30PM | Sat-Sun: Closed
-<<< END KNOWLEDGE >>>
-`;
-
-// =================================================================
-// WEBHOOK ENDPOINT WITH ACTIVE RULE REINFORCEMENT
-// =================================================================
 app.post('/', async (req, res) => {
-  const userQuery = req.body.queryText || req.body.text || "";
+  const tag = req.body.fulfillmentInfo?.tag;
 
-  try {
-    // Step 1: Initial attempt with full context
-    let messages = [
-      { 
-        role: "system", 
-        content: `${STRICT_RULES}\n\n${AMTEC_KNOWLEDGE}\n\nREMEMBER: ${STRICT_RULES}` 
-      },
-      { role: "user", content: userQuery }
-    ];
+  if (tag === 'chatgpt-fallback') {
+    const userQuery =
+      req.body.sessionInfo?.parameters?.text ||
+      req.body.text ||
+      req.body.queryResult?.text ||
+      "What do you want to know?";
 
-    let completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages,
-      temperature: 0.0, // Zero creativity
-      max_tokens: 150
-    });
+    try {
+      // Re-inject company rules every fallback
+      const systemPrompt = `
+You are Amtec Links' official support chatbot.  
 
-    let aiReply = completion.choices[0].message.content;
+✅ ONLY respond to questions directly related to Amtec Links, its services, team, industries, and support options.  
+🚫 If the user asks anything unrelated to Amtec Links, DO NOT answer. Instead, always reply:  
+"I’m Amtec Links’ support bot, and I can only assist with questions about our company, services, or support. Would you like to ask something related to Amtec Links?"
 
-    // Step 2: Detect and correct off-topic responses
-    const isOffTopic = ![
-      "amtec", "hardware", "software", "cloud", "contact", 
-      "mission", "vision", "muhammad", "intissar", "uae"
-    ].some(keyword => aiReply.toLowerCase().includes(keyword));
+📌 **Amtec Links Company Information**:  
 
-    if (isOffTopic) {
-      // Reinforce rules and retry
-      messages.push(
-        { role: "assistant", content: aiReply },
-        { 
-          role: "user", 
-          content: "CORRECTION: Your previous response was off-topic. " + 
-                  "Remember: ONLY discuss Amtec Links' products, services, or company info."
+- **About Us**: Amtec Links is an IT solutions company providing cloud computing, IT infrastructure, and digital transformation services.  
+- **Services**: Cloud Solutions, IT Procurement, Consultancy, Cybersecurity, Web & App Development, Corporate Branding, Training.  
+- **Industries Served**: Healthcare, Finance, Retail, Education, Government.  
+- **Leadership**: Muhammad Ismail (CEO), Intissar Abdallah (CLO).  
+- **Working Hours**: Mon–Thu 9 AM–5 PM; Fri 9 AM–12:30 PM; Sat–Sun Closed  
+- **Support Options**: Ticketing system, Email, Phone, WhatsApp.  
+
+🚫 DO NOT answer general knowledge questions.  
+🚫 DO NOT make up information not in this dataset.  
+      `;
+
+      const openaiRes = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          model: 'gpt-4',
+          temperature: 0,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userQuery }
+          ]
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
         }
       );
 
-      completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages,
-        temperature: 0.0,
-        max_tokens: 150
-      });
-      aiReply = completion.choices[0].message.content;
-    }
+      let reply = openaiRes.data.choices[0].message.content;
 
-    // Final response
-    res.json({
-      fulfillmentResponse: {
-        messages: [{ text: { text: [aiReply] } }]
+      // Hard fallback if GPT still tries to answer unrelated stuff
+      if (
+        !reply.toLowerCase().includes("amtec links") &&
+        !reply.toLowerCase().includes("i’m amtec links’ support bot")
+      ) {
+        reply = "I’m Amtec Links’ support bot, and I can only assist with questions about our company, services, or support. Would you like to ask something related to Amtec Links?";
       }
-    });
 
-  } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ 
-      fulfillmentResponse: {
-        messages: [{ text: { text: ["Please contact info@amteclinks.com"] } }]
+      res.json({
+        fulfillment_response: {
+          messages: [
+            { text: { text: [reply] } }
+          ]
+        }
+      });
+    } catch (err) {
+      console.error('OpenAI Error:', err.response?.data || err.message);
+      res.json({
+        fulfillment_response: {
+          messages: [
+            { text: { text: ["Sorry, I couldn’t get an answer right now. Please try again later."] } }
+          ]
+        }
+      });
+    }
+  } else {
+    res.json({
+      fulfillment_response: {
+        messages: [
+          { text: { text: ["Invalid or missing fulfillment tag."] } }
+        ]
       }
     });
   }
 });
 
-// =================================================================
-// SERVER START
-// =================================================================
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`🚀 Amtec Links bot running with COMPLETE knowledge`);
-  console.log("🔒 100% strict mode - No off-topic responses");
-});
+app.listen(PORT, () => console.log(`✅ Amtec Links ChatGPT webhook running at http://localhost:${PORT}`));
