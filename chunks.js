@@ -6,16 +6,21 @@ const rawText = fs.readFileSync("./data/about_us.txt", "utf8");
 
 // Set up the text splitter
 const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 500,       // Adjust size as needed
-  chunkOverlap: 50,     // Add overlap to preserve context
+  chunkSize: 500, // or adjust as needed
+  chunkOverlap: 50,
 });
 
-// Split the text
+// Split and save
 async function splitDocument() {
   const documents = await splitter.createDocuments([rawText]);
   console.log(`✅ Created ${documents.length} chunks`);
 
-  // Save chunks to a file
+  // Create "chunks" folder if it doesn't exist
+  if (!fs.existsSync("./chunks")) {
+    fs.mkdirSync("./chunks", { recursive: true });
+  }
+
+  // Save chunks
   const chunkContents = documents.map(doc => doc.pageContent);
   fs.writeFileSync(
     "./chunks/chunks.json",
