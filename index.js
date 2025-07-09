@@ -87,7 +87,7 @@ Friendly and Polite Answer:
 app.use(bodyParser.json());
 
 // ✅ Dialogflow webhook
-console.log(JSON.stringify(req.body, null, 2));
+
 app.post("/webhook", async (req, res) => {
   try {
     const userQuery = req.body.queryResult?.queryText;
@@ -122,6 +122,7 @@ app.post("/webhook", async (req, res) => {
     });
   }
 });
+console.log(JSON.stringify(req.body, null, 2));
 
 // ✅ Original /chat endpoint for Postman testing
 app.post("/chat", async (req, res) => {
