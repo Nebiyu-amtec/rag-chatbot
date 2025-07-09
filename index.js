@@ -28,7 +28,7 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 // Function: Find top N relevant chunks above threshold
-async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.3) {
+async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.5) {
   const similarities = embeddingsData.map((item) => ({
     text: item.text,
     similarity: cosineSimilarity(queryEmbedding, item.embedding),
@@ -47,16 +47,17 @@ async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.3) {
 
 // Function: Generate response using GPT
 async function generateAnswer(question, context) {
-  const prompt = `
-You are Amtec Links AI Assistant, a friendly and knowledgeable virtual assistant.
+  const prompt = 
+`You are Amtec Links AI Assistant, a friendly and knowledgeable virtual assistant.
 
-- Answer user questions confidently based on the provided information.
-- Share details like emails, phone numbers, and website URLs if they are available.
+- Answer user questions confidently based on the provided context.
+- If the answer is not directly in the context but related to Amtec Links, make your best effort to provide a helpful reply.
 - If the user asks an unrelated or personal question, politely say: 
-  "I’m Amtec Links AI Assistant, and I can only assist with Amtec Links-related queries."
-- Never mention "context" or "provided information" in your response.
+  "I'm Amtec Links AI Assistant, and I can only assist with Amtec Links-related queries."
+- If you are unsure, ask a clarifying follow-up question like: 
+  "Could you clarify which Amtec Links service you're asking about?"
 
-Information:
+Context:
 ${context}
 
 User Question: ${question}
@@ -64,55 +65,59 @@ User Question: ${question}
 Friendly and Polite Answer:
 `;
 
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are Amtec Links AI Assistant, a friendly virtual IT assistant. Answer user questions using the provided information and make a best effort to help. Be polite, concise, and helpful.",
-        },
-        { role: "user", content: prompt },
-      ],
-    });
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are Amtec Links AI Assistant, a friendly virtual IT assistant. You ONLY answer questions about Amtec Links. Be polite and ask follow-up questions if needed.",
+      },
+      { role: "user", content: prompt },
+    ],
+  });
 
-    const answer = completion.choices[0].message.content.trim();
+  const answer = completion.choices[0].message.content.trim();
 
-    if (!answer || answer.length === 0) {
-      return "I’m Amtec Links AI Assistant. Can you clarify what you’d like to know about Amtec Links?";
-    }
-
-    return answer;
-  } catch (err) {
-    console.error("❌ GPT Error:", err.message);
-    return "I’m Amtec Links AI Assistant. Sorry, I wasn’t able to process that request right now.";
+  // Add fallback for empty responses
+  if (!answer || answer.length === 0) {
+    return "I'm Amtec Links AI Assistant. Can you clarify what you'd like to know about Amtec Links?";
   }
+
+  return answer;
 }
 
 app.use(bodyParser.json());
 
-// ✅ Dialogflow webhook route
-app.post("/webhook", async (req, res) => {
-  try {
-    const userQuery = req.body.queryResult?.queryText; // Extract Dialogflow query
-    console.log(`🤖 Dialogflow Query: ${userQuery}`);
+// Test route
+app.get("/", (req, res) => {
+  res.send("✅ RAG Chatbot Backend with Retrieval is running!");
+});
 
+// Dialogflow Webhook endpoint
+app.post("/dialogflow-webhook", async (req, res) => {
+  try {
+    // Get query from Dialogflow request
+    const userQuery = req.body.queryResult?.queryText || req.body.query;
+    
     if (!userQuery) {
-      console.log("⚠️ No query text found in Dialogflow request.");
+      console.error("No query provided in Dialogflow request");
       return res.json({
-        fulfillmentText:
-          "I’m Amtec Links AI Assistant. Could you repeat your question?",
+        fulfillmentText: "Sorry, I didn't receive your question. Could you please ask again?",
+        source: "Amtec Links AI Assistant"
       });
     }
 
-    // Embed and retrieve
+    console.log(`💬 User Query from Dialogflow: ${userQuery}`);
+
+    // Embed the user query
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: userQuery,
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
+    // Find relevant chunks
     const topChunks = await findRelevantChunks(queryEmbedding);
     let context = "";
 
@@ -122,22 +127,65 @@ app.post("/webhook", async (req, res) => {
       console.log("⚠️ No relevant chunks found. Using empty context.");
     }
 
+    // Generate answer
     const answer = await generateAnswer(userQuery, context);
 
-    // ✅ Return response in Dialogflow's expected format
-    res.json({
+    // Prepare Dialogflow response format
+    const dialogflowResponse = {
       fulfillmentText: answer,
-    });
+      fulfillmentMessages: [
+        {
+          text: {
+            text: [answer]
+          }
+        }
+      ],
+      source: "Amtec Links AI Assistant"
+    };
+
+    res.json(dialogflowResponse);
   } catch (err) {
-    console.error("❌ Error in /webhook:", err.message);
-    res.json({
-      fulfillmentText:
-        "I’m Amtec Links AI Assistant. Sorry, something went wrong.",
+    console.error("❌ Error in /dialogflow-webhook:", err.message);
+    res.status(500).json({
+      fulfillmentText: "Sorry, I encountered an error while processing your request. Please try again later.",
+      source: "Amtec Links AI Assistant"
     });
   }
 });
 
-// ✅ Start server
+// Original chat endpoint (kept for backward compatibility)
+app.post("/chat", async (req, res) => {
+  try {
+    const userQuery = req.body.query;
+    console.log(`💬 User Query: ${userQuery}`);
+
+    // Embed the user query
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: userQuery,
+    });
+    const queryEmbedding = embeddingResponse.data[0].embedding;
+
+    // Find relevant chunks
+    const topChunks = await findRelevantChunks(queryEmbedding);
+    let context = "";
+
+    if (topChunks.length > 0) {
+      context = topChunks.map((c) => c.text).join("\n");
+    } else {
+      console.log("⚠️ No relevant chunks found. Using empty context.");
+    }
+
+    // Generate answer
+    const answer = await generateAnswer(userQuery, context);
+
+    res.json({ answer });
+  } catch (err) {
+    console.error("❌ Error in /chat:", err.message);
+    res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Dialogflow Webhook running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
