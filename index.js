@@ -27,29 +27,41 @@ function cosineSimilarity(vecA, vecB) {
   return dotProduct / (magnitudeA * magnitudeB);
 }
 
-// Function: Find top N relevant chunks
-async function findRelevantChunks(queryEmbedding, topN = 3) {
+// Function: Find top N relevant chunks above threshold
+async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.75) {
   const similarities = embeddingsData.map((item) => ({
     text: item.text,
     similarity: cosineSimilarity(queryEmbedding, item.embedding),
   }));
+
   similarities.sort((a, b) => b.similarity - a.similarity);
-  return similarities.slice(0, topN);
+
+  const filtered = similarities.filter(
+    (chunk) => chunk.similarity >= threshold
+  );
+
+  console.log(`🔍 Found ${filtered.length} relevant chunks`);
+
+  return filtered.slice(0, topN);
 }
 
 // Function: Generate response using GPT
 async function generateAnswer(question, context) {
   const prompt = `
-You are a helpful assistant for Amtec Links. Answer the question below using ONLY the provided context.
-If the answer is not in the context, reply: "Sorry, I don’t have that information right now."
+You are Amtec Links AI Assistant, a friendly and knowledgeable virtual assistant.
+- You ONLY answer questions about Amtec Links based on the provided context.
+- If the answer is not in the context, politely reply: 
+  "I’m Amtec Links AI Assistant. I can only answer questions related to Amtec Links. Please contact our support team for more details."
+- If asked unrelated or personal questions, politely say: 
+  "I’m Amtec Links AI Assistant, and I can only assist with Amtec Links-related queries."
 
 Context:
 ${context}
 
-Question: ${question}
+User Question: ${question}
 
-Answer:
-  `;
+Friendly and Polite Answer:
+`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -81,7 +93,13 @@ app.post("/chat", async (req, res) => {
 
     // Find relevant chunks
     const topChunks = await findRelevantChunks(queryEmbedding);
-    const context = topChunks.map((c) => c.text).join("\n");
+    let context = "";
+
+    if (topChunks.length > 0) {
+      context = topChunks.map((c) => c.text).join("\n");
+    } else {
+      console.log("⚠️ No relevant chunks found. Using empty context.");
+    }
 
     // Generate answer
     const answer = await generateAnswer(userQuery, context);
