@@ -50,11 +50,12 @@ async function generateAnswer(question, context) {
   const prompt = `
 You are Amtec Links AI Assistant, a friendly and knowledgeable virtual assistant.
 
-- Answer user questions confidently based on the provided information.
+- Answer user questions confidently using the information provided below.
 - Share details like emails, phone numbers, and website URLs if they are available.
-- If the user asks an unrelated or personal question, politely say: 
-  "I’m Amtec Links AI Assistant, and I can only assist with Amtec Links-related queries."
+- If you don’t find an exact answer, politely say: 
+  "I’m Amtec Links AI Assistant. I don’t have that information right now, but I’d be happy to help with other Amtec Links-related questions!"
 - Never mention "context" or "provided information" in your response.
+- Be concise, polite, and sound human.
 
 Information:
 ${context}
@@ -70,7 +71,7 @@ Friendly and Polite Answer:
       {
         role: "system",
         content:
-          "You are Amtec Links AI Assistant, a friendly virtual IT assistant. Answer user questions using the provided information and make a best effort to help. Be polite, concise, and helpful.",
+          "You are Amtec Links AI Assistant, a friendly virtual IT assistant. Answer user questions using the provided information and make a best effort to help. Never mention 'context' or 'provided information.' Be polite, concise, and helpful.",
       },
       { role: "user", content: prompt },
     ],
@@ -93,26 +94,30 @@ app.get("/", (req, res) => {
   res.send("✅ RAG Chatbot Backend with Retrieval is running!");
 });
 
-// Chat endpoint for Postman
+// Test route for Postman
 app.post("/chat", async (req, res) => {
   try {
     const userQuery = req.body.query;
-    console.log(`💬 Postman Query: ${userQuery}`);
+    console.log(`💬 User Query: ${userQuery}`);
 
-    // Embed and retrieve
+    // Embed the user query
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: userQuery,
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
+    // Find relevant chunks
     const topChunks = await findRelevantChunks(queryEmbedding);
     let context = "";
 
     if (topChunks.length > 0) {
       context = topChunks.map((c) => c.text).join("\n");
+    } else {
+      console.log("⚠️ No relevant chunks found. Using empty context.");
     }
 
+    // Generate answer
     const answer = await generateAnswer(userQuery, context);
 
     res.json({ answer });
@@ -122,29 +127,33 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// Webhook endpoint for Dialogflow
+// Dialogflow Webhook route
 app.post("/webhook", async (req, res) => {
   try {
     const userQuery = req.body.queryResult.queryText;
     console.log(`🤖 Dialogflow Query: ${userQuery}`);
 
-    // Embed and retrieve
+    // Embed the user query
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: userQuery,
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
+    // Find relevant chunks
     const topChunks = await findRelevantChunks(queryEmbedding);
     let context = "";
 
     if (topChunks.length > 0) {
       context = topChunks.map((c) => c.text).join("\n");
+    } else {
+      console.log("⚠️ No relevant chunks found. Using empty context.");
     }
 
+    // Generate answer
     const answer = await generateAnswer(userQuery, context);
 
-    // Return in Dialogflow format
+    // Return response in Dialogflow format
     res.json({
       fulfillmentText: answer,
     });
@@ -152,7 +161,7 @@ app.post("/webhook", async (req, res) => {
     console.error("❌ Error in /webhook:", err.message);
     res.json({
       fulfillmentText:
-        "I’m Amtec Links AI Assistant. I wasn’t able to process that request right now.",
+        "I’m Amtec Links AI Assistant, and something went wrong. Please try again later.",
     });
   }
 });
