@@ -28,7 +28,7 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 // Function: Find top N relevant chunks above threshold
-async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.75) {
+async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.5) {
   const similarities = embeddingsData.map((item) => ({
     text: item.text,
     similarity: cosineSimilarity(queryEmbedding, item.embedding),
@@ -49,11 +49,13 @@ async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.75) {
 async function generateAnswer(question, context) {
   const prompt = `
 You are Amtec Links AI Assistant, a friendly and knowledgeable virtual assistant.
-- You ONLY answer questions about Amtec Links based on the provided context.
-- If the answer is not in the context, politely reply: 
-  "I’m Amtec Links AI Assistant. I can only answer questions related to Amtec Links. Please contact our support team for more details."
-- If asked unrelated or personal questions, politely say: 
+
+- Answer user questions confidently based on the provided context.
+- If the answer is not directly in the context but related to Amtec Links, make your best effort to provide a helpful reply.
+- If the user asks an unrelated or personal question, politely say: 
   "I’m Amtec Links AI Assistant, and I can only assist with Amtec Links-related queries."
+- If you are unsure, ask a clarifying follow-up question like: 
+  "Could you clarify which Amtec Links service you’re asking about?"
 
 Context:
 ${context}
@@ -65,10 +67,24 @@ Friendly and Polite Answer:
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are Amtec Links AI Assistant, a friendly virtual IT assistant. You ONLY answer questions about Amtec Links. Be polite and ask follow-up questions if needed.",
+      },
+      { role: "user", content: prompt },
+    ],
   });
 
-  return completion.choices[0].message.content.trim();
+  const answer = completion.choices[0].message.content.trim();
+
+  // Add fallback for empty responses
+  if (!answer || answer.length === 0) {
+    return "I’m Amtec Links AI Assistant. Can you clarify what you’d like to know about Amtec Links?";
+  }
+
+  return answer;
 }
 
 app.use(bodyParser.json());
