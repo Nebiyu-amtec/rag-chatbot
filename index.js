@@ -87,6 +87,7 @@ Friendly and Polite Answer:
 app.use(bodyParser.json());
 
 // ✅ Dialogflow webhook
+console.log(JSON.stringify(req.body, null, 2));
 app.post("/webhook", async (req, res) => {
   try {
     const userQuery = req.body.queryResult?.queryText;
