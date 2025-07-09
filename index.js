@@ -128,10 +128,15 @@ app.post("/chat", async (req, res) => {
 });
 
 // Dialogflow Webhook route
-app.post("/webhook", async (req, res) => {
-  try {
-    const userQuery = req.body.queryResult.queryText;
-    console.log(`🤖 Dialogflow Query: ${userQuery}`);
+app.post("/webhook", (req, res) => {
+  console.log("✅ Webhook hit! User said:", req.body.queryResult?.queryText);
+  
+  // Always respond with this for now
+  res.json({
+    fulfillmentText: "✅ Webhook is working! Your request was received.",
+  });
+});
+
 
     // Embed the user query
     const embeddingResponse = await openai.embeddings.create({
