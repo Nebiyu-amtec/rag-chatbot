@@ -79,7 +79,6 @@ Friendly and Polite Answer:
 
     const answer = completion.choices[0].message.content.trim();
 
-    // Fallback for empty responses
     if (!answer || answer.length === 0) {
       return "I’m Amtec Links AI Assistant. Can you clarify what you’d like to know about Amtec Links?";
     }
@@ -93,47 +92,19 @@ Friendly and Polite Answer:
 
 app.use(bodyParser.json());
 
-// 🟢 Test route for browser
-app.get("/", (req, res) => {
-  res.send("✅ RAG Chatbot Backend with Retrieval is running!");
-});
-
-// 🟢 Postman testing route
-app.post("/chat", async (req, res) => {
-  try {
-    const userQuery = req.body.query;
-    console.log(`💬 Postman Query: ${userQuery}`);
-
-    // Embed and retrieve
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: userQuery,
-    });
-    const queryEmbedding = embeddingResponse.data[0].embedding;
-
-    const topChunks = await findRelevantChunks(queryEmbedding);
-    let context = "";
-
-    if (topChunks.length > 0) {
-      context = topChunks.map((c) => c.text).join("\n");
-    } else {
-      console.log("⚠️ No relevant chunks found. Using empty context.");
-    }
-
-    const answer = await generateAnswer(userQuery, context);
-
-    res.json({ answer });
-  } catch (err) {
-    console.error("❌ Error in /chat:", err.message);
-    res.status(500).json({ error: "Something went wrong." });
-  }
-});
-
-// 🟢 Dialogflow webhook route
+// ✅ Dialogflow webhook route
 app.post("/webhook", async (req, res) => {
   try {
-    const userQuery = req.body.queryResult.queryText;
+    const userQuery = req.body.queryResult?.queryText; // Extract Dialogflow query
     console.log(`🤖 Dialogflow Query: ${userQuery}`);
+
+    if (!userQuery) {
+      console.log("⚠️ No query text found in Dialogflow request.");
+      return res.json({
+        fulfillmentText:
+          "I’m Amtec Links AI Assistant. Could you repeat your question?",
+      });
+    }
 
     // Embed and retrieve
     const embeddingResponse = await openai.embeddings.create({
@@ -153,7 +124,7 @@ app.post("/webhook", async (req, res) => {
 
     const answer = await generateAnswer(userQuery, context);
 
-    // ✅ Return in Dialogflow format
+    // ✅ Return response in Dialogflow's expected format
     res.json({
       fulfillmentText: answer,
     });
@@ -161,11 +132,12 @@ app.post("/webhook", async (req, res) => {
     console.error("❌ Error in /webhook:", err.message);
     res.json({
       fulfillmentText:
-        "I’m Amtec Links AI Assistant. Sorry, I wasn’t able to process that request right now.",
+        "I’m Amtec Links AI Assistant. Sorry, something went wrong.",
     });
   }
 });
 
+// ✅ Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Dialogflow Webhook running on port ${PORT}`);
 });
