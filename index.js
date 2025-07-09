@@ -9,6 +9,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+app.use(bodyParser.json());
+
 // Load embeddings
 const embeddingsData = JSON.parse(
   fs.readFileSync("./embeddings/embeddings.json", "utf8")
@@ -34,9 +36,7 @@ async function findRelevantChunks(queryEmbedding, topN = 3, threshold = 0.3) {
     similarity: cosineSimilarity(queryEmbedding, item.embedding),
   }));
   similarities.sort((a, b) => b.similarity - a.similarity);
-  const filtered = similarities.filter(
-    (chunk) => chunk.similarity >= threshold
-  );
+  const filtered = similarities.filter((chunk) => chunk.similarity >= threshold);
   console.log(`🔍 Found ${filtered.length} relevant chunks`);
   return filtered.slice(0, topN);
 }
@@ -74,31 +74,35 @@ Friendly and Polite Answer:
 
     const answer = completion.choices[0].message.content.trim();
 
-    if (!answer) {
-      return "I'm Amtec Links AI Assistant. Can you clarify your question?";
-    }
-    return answer;
+    return answer || "I'm Amtec Links AI Assistant. Can you clarify your question?";
   } catch (err) {
     console.error("❌ GPT Error:", err.message);
     return "I'm Amtec Links AI Assistant. Sorry, something went wrong. Please try again.";
   }
 }
 
-app.use(bodyParser.json());
-
-// ✅ Dialogflow webhook
-
+// ✅ Dialogflow CX Webhook
 app.post("/webhook", async (req, res) => {
+  console.log("📦 Webhook Body:", JSON.stringify(req.body, null, 2));
+
+  const userQuery = req.body.text;
+  console.log(`🤖 Dialogflow CX Query: ${userQuery}`);
+
+  if (!userQuery) {
+    return res.json({
+      fulfillment_response: {
+        messages: [
+          {
+            text: {
+              text: ["I'm Amtec Links AI Assistant. Can you please ask your question again?"],
+            },
+          },
+        ],
+      },
+    });
+  }
+
   try {
-    const userQuery = req.body.queryResult?.queryText;
-    console.log(`🤖 Dialogflow Query: ${userQuery}`);
-
-    if (!userQuery) {
-      return res.json({
-        fulfillmentText: "I'm Amtec Links AI Assistant. Can you please ask your question again?",
-      });
-    }
-
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: userQuery,
@@ -106,26 +110,38 @@ app.post("/webhook", async (req, res) => {
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
     const topChunks = await findRelevantChunks(queryEmbedding);
-    let context = topChunks.map((c) => c.text).join("\n");
+    const context = topChunks.map((c) => c.text).join("\n");
 
     const answer = await generateAnswer(userQuery, context);
 
-    // ✅ Respond to Dialogflow in the correct format
     res.json({
-      fulfillmentText: answer,
+      fulfillment_response: {
+        messages: [
+          {
+            text: {
+              text: [answer],
+            },
+          },
+        ],
+      },
     });
   } catch (err) {
     console.error("❌ Webhook Error:", err.message);
     res.json({
-      fulfillmentText:
-        "I'm Amtec Links AI Assistant. Sorry, something went wrong. Please try again.",
+      fulfillment_response: {
+        messages: [
+          {
+            text: {
+              text: ["I'm Amtec Links AI Assistant. Sorry, something went wrong. Please try again."],
+            },
+          },
+        ],
+      },
     });
-    
   }
 });
 
-
-// ✅ Original /chat endpoint for Postman testing
+// ✅ /chat endpoint (for Postman/local testing)
 app.post("/chat", async (req, res) => {
   try {
     const userQuery = req.body.query;
@@ -138,7 +154,7 @@ app.post("/chat", async (req, res) => {
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
     const topChunks = await findRelevantChunks(queryEmbedding);
-    let context = topChunks.map((c) => c.text).join("\n");
+    const context = topChunks.map((c) => c.text).join("\n");
 
     const answer = await generateAnswer(userQuery, context);
 
