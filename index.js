@@ -120,7 +120,7 @@ app.post("/webhook", async (req, res) => {
       fulfillmentText:
         "I'm Amtec Links AI Assistant. Sorry, something went wrong. Please try again.",
     });
-    console.log(JSON.stringify(req.body, null, 2));
+    
   }
 });
 
