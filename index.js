@@ -81,7 +81,7 @@ Friendly and Polite Answer:
   }
 }
 
-// ✅ Dialogflow CX Webhook
+//  Dialogflow CX Webhook
 app.post("/webhook", async (req, res) => {
   console.log("📦 Webhook Body:", JSON.stringify(req.body, null, 2));
 
@@ -141,11 +141,11 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// ✅ /chat endpoint (for Postman/local testing)
+// chat endpoint (for Postman/local testing)
 app.post("/chat", async (req, res) => {
   try {
     const userQuery = req.body.query;
-    console.log(`💬 Postman Query: ${userQuery}`);
+    console.log(` Postman Query: ${userQuery}`);
 
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-small",
